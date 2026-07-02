@@ -1,0 +1,4 @@
+project_id = "harmonogram-grania"
+
+[functions.activate-player]
+verify_jwt = false
