@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { CalendarDays, ChevronLeft, ChevronRight, LogOut, RefreshCw, Settings, UsersRound } from 'lucide-react'
 import { AuthScreen } from './components/AuthScreen'
+import { Avatar } from './components/Avatar'
 import { CalendarView } from './components/CalendarView'
 import { DayDialog } from './components/DayDialog'
 import { ProfileDialog } from './components/ProfileDialog'
 import { addMonths, endOfMonth, monthLabel, startOfMonth, toDateKey } from './lib/date'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
-import type { Availability, Profile } from './types'
+import type { Availability, AvailabilityStatus, Profile } from './types'
 
 function SetupError() {
   return (
@@ -38,6 +39,21 @@ function AccessDenied() {
       </section>
     </main>
   )
+}
+
+async function attachAvatarUrls(rawProfiles: Profile[]): Promise<Profile[]> {
+  return Promise.all(rawProfiles.map(async (profile) => {
+    if (!profile.avatar_path) return { ...profile, avatar_url: null }
+
+    const { data, error } = await supabase.storage
+      .from('avatars')
+      .createSignedUrl(profile.avatar_path, 60 * 60)
+
+    return {
+      ...profile,
+      avatar_url: error ? null : data.signedUrl,
+    }
+  }))
 }
 
 export default function App() {
@@ -73,7 +89,8 @@ export default function App() {
     if (!session) return
     const { data, error: queryError } = await supabase.from('profiles').select('*').order('display_name')
     if (queryError) throw queryError
-    setProfiles((data || []) as Profile[])
+    const resolved = await attachAvatarUrls((data || []) as Profile[])
+    setProfiles(resolved)
   }, [session])
 
   const loadAvailability = useCallback(async () => {
@@ -125,15 +142,20 @@ export default function App() {
     [availability, selectedDay],
   )
 
-  const saveDay = async (selected: boolean, note: string) => {
+  const saveDay = async (status: AvailabilityStatus | null, note: string) => {
     if (!session || !selectedDay) return
     setSaving(true)
     setError(null)
     const existing = availability.find((entry) => entry.day === selectedDay && entry.user_id === session.user.id)
 
-    const result = selected
+    const result = status
       ? await supabase.from('availability').upsert(
-          { user_id: session.user.id, day: selectedDay, note: note || null },
+          {
+            user_id: session.user.id,
+            day: selectedDay,
+            status,
+            note: note || null,
+          },
           { onConflict: 'user_id,day' },
         )
       : existing
@@ -142,7 +164,7 @@ export default function App() {
 
     setSaving(false)
     if (result.error) {
-      setError('Nie udało się zapisać terminu.')
+      setError('Nie udało się zapisać odpowiedzi.')
       return
     }
     await loadAvailability()
@@ -167,7 +189,7 @@ export default function App() {
         <div className="topbar-actions">
           {currentProfile && (
             <button className="profile-button" type="button" onClick={() => setProfileOpen(true)}>
-              <span className="avatar small">{currentProfile.display_name.slice(0, 1).toUpperCase()}</span>
+              <Avatar profile={currentProfile} size="small" />
               <span>{currentProfile.display_name}</span>
               <Settings size={17} />
             </button>
@@ -191,7 +213,7 @@ export default function App() {
           <div>
             <p className="eyebrow"><UsersRound size={15} /> {profiles.length} {profiles.length === 1 ? 'osoba' : 'osób'} w ekipie</p>
             <h1>Wybierz dzień, który Ci pasuje</h1>
-            <p>Kliknij datę, zaznacz swoją dostępność i opcjonalnie dopisz godziny.</p>
+            <p>Wybierz: „Pasuje mi”, „Jeszcze nie wiem” albo „Nie da rady”. Możesz też dopisać godziny.</p>
           </div>
           <button className="secondary-button" type="button" onClick={() => void loadAll()} disabled={loading}>
             <RefreshCw size={17} className={loading ? 'spin' : ''} /> Odśwież
@@ -219,8 +241,10 @@ export default function App() {
           />
 
           <div className="legend">
-            <span><i className="legend-dot own-dot" /> Zaznaczony przez Ciebie</span>
-            <span><i className="legend-dot everyone-dot" /> Pasuje wszystkim</span>
+            <span><i className="legend-dot partial-dot" /> Część ekipy może grać</span>
+            <span><i className="legend-dot everyone-dot" /> Wszystkim pasuje</span>
+            <span><i className="legend-dot unsure-dot" /> Ktoś jeszcze nie wie</span>
+            <span><i className="legend-dot unavailable-dot" /> Ktoś nie da rady</span>
           </div>
         </section>
       </main>
