@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { CalendarDays, ChevronLeft, ChevronRight, LogOut, RefreshCw, Settings, UsersRound } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, LogOut, RefreshCw, Settings, ShieldCheck, UsersRound } from 'lucide-react'
+import { AdminPanel } from './components/AdminPanel'
 import { AuthScreen } from './components/AuthScreen'
 import { Avatar } from './components/Avatar'
 import { CalendarView } from './components/CalendarView'
@@ -64,6 +65,8 @@ export default function App() {
   const [availability, setAvailability] = useState<Availability[]>([])
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [profileOpen, setProfileOpen] = useState(false)
+  const [adminOpen, setAdminOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -87,7 +90,7 @@ export default function App() {
 
   const loadProfiles = useCallback(async () => {
     if (!session) return
-    const { data, error: queryError } = await supabase.from('profiles').select('*').order('display_name')
+    const { data, error: queryError } = await supabase.from('profiles').select('*').eq('is_active', true).order('display_name')
     if (queryError) throw queryError
     const resolved = await attachAvatarUrls((data || []) as Profile[])
     setProfiles(resolved)
@@ -131,6 +134,39 @@ export default function App() {
       .subscribe()
     return () => { void supabase.removeChannel(channel) }
   }, [loadAvailability, loadProfiles, session])
+
+  useEffect(() => {
+    if (!session) {
+      setIsAdmin(false)
+      return
+    }
+
+    supabase.functions.invoke('admin-control', { body: { action: 'status' } })
+      .then(({ data, error }) => setIsAdmin(!error && Boolean(data?.isAdmin)))
+      .catch(() => setIsAdmin(false))
+  }, [session])
+
+  useEffect(() => {
+    if (!session) return
+
+    const touch = () => {
+      if (document.visibilityState === 'visible') {
+        void supabase.rpc('touch_user_activity')
+      }
+    }
+
+    touch()
+    const timer = window.setInterval(touch, 45_000)
+    const onVisibility = () => touch()
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', touch)
+
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', touch)
+    }
+  }, [session])
 
   const currentProfile = useMemo(
     () => profiles.find((profile) => profile.id === session?.user.id),
@@ -187,6 +223,11 @@ export default function App() {
       <header className="topbar">
         <div className="brand-inline"><CalendarDays size={25} /><span>Harmonogram grania</span></div>
         <div className="topbar-actions">
+          {isAdmin && (
+            <button className="secondary-button compact admin-trigger" type="button" onClick={() => setAdminOpen(true)}>
+              <ShieldCheck size={17} /><span>Administracja</span>
+            </button>
+          )}
           {currentProfile && (
             <button className="profile-button" type="button" onClick={() => setProfileOpen(true)}>
               <Avatar profile={currentProfile} size="small" />
@@ -266,6 +307,14 @@ export default function App() {
           profile={currentProfile}
           onClose={() => setProfileOpen(false)}
           onProfileUpdated={loadProfiles}
+        />
+      )}
+
+      {adminOpen && isAdmin && session && (
+        <AdminPanel
+          currentUserId={session.user.id}
+          onClose={() => setAdminOpen(false)}
+          onUsersChanged={loadProfiles}
         />
       )}
     </div>

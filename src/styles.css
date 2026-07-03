@@ -250,3 +250,52 @@ input:disabled, textarea:disabled { background: #f2f3f6; color: #9aa2b1; }
   .avatar-crop-controls { align-items: stretch; flex-direction: column; }
   .avatar-crop-controls .secondary-button { align-self: flex-start; }
 }
+
+/* Panel administratora */
+.admin-trigger { gap: .45rem; }
+.admin-dialog { width: min(100%, 920px); max-height: 92vh; }
+.admin-summary { display: flex; flex-wrap: wrap; gap: .55rem; margin-bottom: 1rem; }
+.admin-summary span { padding: .45rem .65rem; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: .82rem; }
+.admin-summary b { color: var(--text); }
+.online-summary { border-color: color-mix(in srgb, var(--success) 38%, var(--border)) !important; background: var(--success-soft) !important; }
+.admin-invite-section { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-soft); }
+.admin-invite-section h3, .admin-list-heading h3 { display: flex; align-items: center; gap: .45rem; margin: 0; font-size: 1rem; }
+.admin-invite-section p { margin: .25rem 0 0; color: var(--muted); font-size: .82rem; }
+.admin-invite-card { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: .75rem; padding: .85rem; border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border)); border-radius: 14px; background: var(--primary-soft); }
+.admin-invite-card > div { display: grid; gap: .2rem; min-width: 0; }
+.admin-invite-card small, .admin-invite-card span { color: var(--muted); }
+.admin-invite-card strong { overflow-wrap: anywhere; color: var(--primary-dark); letter-spacing: .03em; }
+.admin-list-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 1.25rem 0 .7rem; }
+.admin-user-list { display: grid; gap: .65rem; }
+.admin-user-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .8rem; padding: .85rem; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); }
+.admin-user-card.blocked { opacity: .72; background: var(--surface-soft); }
+.admin-user-avatar { position: relative; width: 46px; height: 46px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid var(--border); border-radius: 50%; overflow: visible; background: var(--primary-soft); color: var(--primary-dark); font-weight: 800; }
+.admin-user-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.admin-user-avatar i { position: absolute; right: -1px; bottom: 1px; width: 12px; height: 12px; border: 2px solid var(--surface); border-radius: 50%; }
+.online-dot { background: var(--success); }
+.offline-dot { background: #9099a8; }
+.admin-user-main { min-width: 0; display: grid; gap: .35rem; }
+.admin-user-title { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.admin-user-title strong { overflow: hidden; text-overflow: ellipsis; }
+.admin-user-main code { justify-self: start; font-size: .75rem; }
+.admin-role-badge, .account-active-badge, .account-blocked-badge { padding: .15rem .38rem; border-radius: 999px; font-size: .66rem; font-weight: 800; }
+.admin-role-badge { color: var(--primary-dark); background: var(--primary-soft); }
+.account-active-badge { color: var(--success); background: var(--success-soft); }
+.account-blocked-badge { color: var(--danger); background: var(--danger-soft); }
+.admin-user-meta { display: flex; flex-wrap: wrap; gap: .45rem 1rem; margin: 0; }
+.admin-user-meta div { display: flex; gap: .3rem; font-size: .75rem; }
+.admin-user-meta dt { color: var(--muted); }
+.admin-user-meta dd { margin: 0; font-weight: 700; }
+.admin-user-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .45rem; }
+.warning-button { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border)); border-radius: 11px; padding: .67rem .85rem; background: var(--warning-soft); color: var(--warning); font-weight: 750; cursor: pointer; }
+.warning-button:hover { filter: brightness(.98); }
+.warning-button:disabled { opacity: .55; cursor: not-allowed; }
+
+@media (max-width: 720px) {
+  .admin-trigger span { display: none; }
+  .admin-invite-section, .admin-invite-card { align-items: stretch; flex-direction: column; }
+  .admin-invite-section .primary-button, .admin-invite-card .secondary-button { align-self: flex-start; }
+  .admin-user-card { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .admin-user-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .admin-user-meta { display: grid; gap: .25rem; }
+}
