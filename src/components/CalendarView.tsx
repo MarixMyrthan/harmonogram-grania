@@ -85,11 +85,11 @@ export function CalendarView({ month, profiles, availability, currentUserId, onS
               <div className="day-summary">
                 <span className="person-count"><UsersRound size={14} /> {entries.length}/{profiles.length}</span>
                 <div className="mini-names">
-                  {entries.slice(0, 3).map((entry) => (
+                  {entries.slice(0, 5).map((entry) => (
                     <span
                       className={`status-badge status-badge-${entry.status}`}
                       key={entry.user_id}
-                      title={`${profileById.get(entry.user_id)?.display_name}: ${
+                      title={`${profileById.get(entry.user_id)?.display_name}{entry.note?.trim() ? " ✉" : ""}: ${
                         entry.status === 'available'
                           ? 'Pasuje mi'
                           : entry.status === 'unsure'
@@ -97,10 +97,10 @@ export function CalendarView({ month, profiles, availability, currentUserId, onS
                             : 'Nie da rady'
                       }`}
                     >
-                      {profileById.get(entry.user_id)?.display_name}
+                      {profileById.get(entry.user_id)?.display_name}{entry.note?.trim() ? " ✉" : ""}
                     </span>
                   ))}
-                  {entries.length > 3 && <span className="status-badge status-badge-more">+{entries.length - 3}</span>}
+                  {entries.length > 4 && <span className="status-badge status-badge-more">+{entries.length - 3}</span>}
                 </div>
               </div>
             </button>

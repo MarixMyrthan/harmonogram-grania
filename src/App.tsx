@@ -149,15 +149,21 @@ export default function App() {
   useEffect(() => {
     if (!session) return
 
-    const touch = () => {
-      if (document.visibilityState === 'visible') {
-        void supabase.rpc('touch_user_activity')
-      }
-    }
+const touch = async () => {
+  if (document.visibilityState !== 'visible') return
 
-    touch()
-    const timer = window.setInterval(touch, 45_000)
-    const onVisibility = () => touch()
+  const { error } = await supabase.functions.invoke('admin-control', {
+    body: { action: 'touch' },
+  })
+
+  if (error) {
+    console.error('Nie udało się zapisać aktywności:', error)
+  }
+}
+
+    void touch()
+    const timer = window.setInterval(() => void touch(), 45_000)
+    const onVisibility = () => void touch()
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('focus', touch)
 
