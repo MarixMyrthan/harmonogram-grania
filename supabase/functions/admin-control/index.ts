@@ -1,7 +1,27 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.110.0'
 import { corsHeaders } from 'npm:@supabase/supabase-js@2.110.0/cors'
 
-type Action = 'status' | 'list' | 'invite' | 'set-active' | 'delete-user'
+type Action =
+  | 'status'
+  | 'touch'
+  | 'maintenance'
+  | 'list'
+  | 'invite'
+  | 'set-active'
+  | 'set-colorblind'
+  | 'delete-user'
+  | 'protected-days'
+  | 'set-day-protection'
+  | 'chat-cleanup-preview'
+  | 'chat-cleanup'
+
+type DeviceType = 'computer' | 'phone' | 'tablet' | 'unknown'
+type OperatingSystem = 'windows' | 'android' | 'apple' | 'linux' | 'unknown'
+type Browser = 'firefox' | 'chrome' | 'edge' | 'safari' | 'opera' | 'brave' | 'unknown'
+
+const DEVICE_TYPES = new Set<DeviceType>(['computer', 'phone', 'tablet', 'unknown'])
+const OPERATING_SYSTEMS = new Set<OperatingSystem>(['windows', 'android', 'apple', 'linux', 'unknown'])
+const BROWSERS = new Set<Browser>(['firefox', 'chrome', 'edge', 'safari', 'opera', 'brave', 'unknown'])
 
 const headers = {
   ...corsHeaders,
@@ -31,6 +51,15 @@ function isUuid(value: unknown): value is string {
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
+function isDateKey(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+function normalizeDays(value: unknown): number | null {
+  const resolved = typeof value === 'number' ? value : Number(value)
+  return Number.isInteger(resolved) && resolved >= 1 && resolved <= 3650 ? resolved : null
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers })
   if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
@@ -54,6 +83,51 @@ Deno.serve(async (request) => {
       action?: Action
       userId?: string
       active?: boolean
+      enabled?: boolean
+      day?: string
+      protected?: boolean
+      days?: number
+      deviceType?: DeviceType
+      operatingSystem?: OperatingSystem
+      browser?: Browser
+    }
+
+    const { data: callerProfile, error: callerProfileError } = await admin
+      .from('profiles')
+      .select('is_active')
+      .eq('id', caller.id)
+      .maybeSingle()
+
+    if (callerProfileError) throw callerProfileError
+    if (!callerProfile?.is_active) return json({ error: 'Konto jest nieaktywne.' }, 403)
+
+    if (body.action === 'maintenance') {
+      const { data, error } = await admin.rpc('run_daily_maintenance')
+      if (error) throw error
+      return json({ ok: true, maintenance: data })
+    }
+
+    const activityPayload: Record<string, unknown> = {
+      user_id: caller.id,
+      last_seen_at: new Date().toISOString(),
+    }
+
+    if (body.action === 'touch') {
+      activityPayload.device_type = DEVICE_TYPES.has(body.deviceType || 'unknown') ? body.deviceType : 'unknown'
+      activityPayload.operating_system = OPERATING_SYSTEMS.has(body.operatingSystem || 'unknown') ? body.operatingSystem : 'unknown'
+      activityPayload.browser = BROWSERS.has(body.browser || 'unknown') ? body.browser : 'unknown'
+    }
+
+    const { error: activityError } = await admin
+      .from('user_activity')
+      .upsert(activityPayload, { onConflict: 'user_id' })
+
+    if (activityError) throw activityError
+
+    if (body.action === 'touch') {
+      const { error: maintenanceError } = await admin.rpc('run_daily_maintenance')
+      if (maintenanceError) console.warn('Daily maintenance failed:', maintenanceError)
+      return json({ ok: true })
     }
 
     const { data: adminRow, error: adminError } = await admin
@@ -69,17 +143,17 @@ Deno.serve(async (request) => {
     if (!isAdmin) return json({ error: 'Brak uprawnień administratora.' }, 403)
 
     if (body.action === 'list') {
-      const [{ data: profiles, error: profilesError }, { data: activity, error: activityError }, { data: admins, error: adminsError }] = await Promise.all([
-        admin.from('profiles').select('id, player_code, display_name, avatar_path, is_active, created_at').order('display_name'),
-        admin.from('user_activity').select('user_id, last_seen_at'),
+      const [{ data: profiles, error: profilesError }, { data: activity, error: listActivityError }, { data: admins, error: adminsError }] = await Promise.all([
+        admin.from('profiles').select('id, player_code, display_name, avatar_path, is_active, colorblind_mode').order('display_name'),
+        admin.from('user_activity').select('user_id, last_seen_at, device_type, operating_system, browser'),
         admin.from('admin_users').select('user_id'),
       ])
 
       if (profilesError) throw profilesError
-      if (activityError) throw activityError
+      if (listActivityError) throw listActivityError
       if (adminsError) throw adminsError
 
-      const lastSeen = new Map((activity || []).map((row) => [row.user_id, row.last_seen_at]))
+      const activityByUser = new Map((activity || []).map((row) => [row.user_id, row]))
       const adminIds = new Set((admins || []).map((row) => row.user_id))
 
       const users = await Promise.all((profiles || []).map(async (profile) => {
@@ -88,10 +162,15 @@ Deno.serve(async (request) => {
           const { data } = await admin.storage.from('avatars').createSignedUrl(profile.avatar_path, 60 * 60)
           avatarUrl = data?.signedUrl || null
         }
+
+        const userActivity = activityByUser.get(profile.id)
         return {
           ...profile,
           avatar_url: avatarUrl,
-          last_seen_at: lastSeen.get(profile.id) || null,
+          last_seen_at: userActivity?.last_seen_at || null,
+          device_type: userActivity?.device_type || 'unknown',
+          operating_system: userActivity?.operating_system || 'unknown',
+          browser: userActivity?.browser || 'unknown',
           is_admin: adminIds.has(profile.id),
         }
       }))
@@ -105,6 +184,51 @@ Deno.serve(async (request) => {
       const invite = Array.isArray(data) ? data[0] : data
       if (!invite) throw new Error('Invite was not generated')
       return json({ invite })
+    }
+
+    if (body.action === 'protected-days') {
+      const { data, error } = await admin
+        .from('calendar_day_protections')
+        .select('day')
+        .order('day')
+      if (error) throw error
+      return json({ days: (data || []).map((row) => row.day) })
+    }
+
+    if (body.action === 'set-day-protection') {
+      if (!isDateKey(body.day) || typeof body.protected !== 'boolean') {
+        return json({ error: 'Nieprawidłowy termin.' }, 400)
+      }
+
+      if (body.protected) {
+        const { error } = await admin
+          .from('calendar_day_protections')
+          .upsert({ day: body.day, protected_by: caller.id }, { onConflict: 'day' })
+        if (error) throw error
+      } else {
+        const { error } = await admin
+          .from('calendar_day_protections')
+          .delete()
+          .eq('day', body.day)
+        if (error) throw error
+      }
+
+      return json({ ok: true })
+    }
+
+    if (body.action === 'chat-cleanup-preview' || body.action === 'chat-cleanup') {
+      const days = normalizeDays(body.days)
+      if (!days) return json({ error: 'Podaj liczbę dni od 1 do 3650.' }, 400)
+
+      const functionName = body.action === 'chat-cleanup-preview'
+        ? 'count_chat_messages_older_than'
+        : 'delete_chat_messages_older_than'
+      const { data, error } = await admin.rpc(functionName, { p_days: days })
+      if (error) throw error
+
+      return body.action === 'chat-cleanup-preview'
+        ? json({ count: Number(data || 0), days })
+        : json({ deleted: Number(data || 0), days })
     }
 
     if (body.action === 'set-active') {
@@ -127,6 +251,19 @@ Deno.serve(async (request) => {
       if (error) throw error
 
       if (!body.active) await admin.from('user_activity').delete().eq('user_id', body.userId)
+      return json({ ok: true })
+    }
+
+    if (body.action === 'set-colorblind') {
+      if (!isUuid(body.userId) || typeof body.enabled !== 'boolean') {
+        return json({ error: 'Nieprawidłowe dane trybu daltonisty.' }, 400)
+      }
+
+      const { error } = await admin
+        .from('profiles')
+        .update({ colorblind_mode: body.enabled })
+        .eq('id', body.userId)
+      if (error) throw error
       return json({ ok: true })
     }
 
