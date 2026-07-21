@@ -1061,3 +1061,47 @@ input:disabled, textarea:disabled { background: #f2f3f6; color: #9aa2b1; }
   .audio-notice { align-items: stretch; flex-direction: column; }
   .audio-notice button { align-self: flex-start; }
 }
+
+/* Większa animowana ikona Son Goku */
+.goku-secret-trigger {
+  width: 48px;
+  height: 48px;
+}
+
+.goku-secret-icon {
+  width: 42px;
+  height: 42px;
+}
+
+.goku-hold-ring {
+  width: 52px;
+  height: 52px;
+  inset: -2px;
+}
+
+/* Duża animowana ikona Son Goku */
+.topbar {
+  min-height: 88px;
+  height: auto;
+}
+
+.goku-secret-trigger {
+  width: 72px;
+  height: 72px;
+  overflow: visible;
+  flex: 0 0 auto;
+}
+
+.goku-secret-icon {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  transform: scale(1.25);
+  transform-origin: center;
+}
+
+.goku-hold-ring {
+  width: 76px;
+  height: 76px;
+  inset: -2px;
+}
