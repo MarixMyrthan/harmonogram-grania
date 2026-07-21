@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Check, CircleHelp, UsersRound, X } from 'lucide-react'
+import { Check, CircleHelp, Mail, Pin, UsersRound, X } from 'lucide-react'
 import type { Availability, Profile } from '../types'
 import { buildMonthGrid, toDateKey, WEEKDAYS } from '../lib/date'
 
@@ -8,17 +8,18 @@ interface CalendarViewProps {
   profiles: Profile[]
   availability: Availability[]
   currentUserId: string
+  protectedDays: string[]
+  showProtectionMarks: boolean
   onSelectDay: (day: string) => void
 }
 
 function getDayClass(entries: Availability[], profileCount: number): string {
   if (entries.length === 0) return ''
   if (entries.some((entry) => entry.status === 'unavailable')) return ' unavailable-day'
-
-  const everyoneAnswered = profileCount > 0 && entries.length === profileCount
-  if (everyoneAnswered && entries.some((entry) => entry.status === 'unsure')) return ' unsure-day'
-  if (everyoneAnswered) return ' everyone'
-
+  if (entries.length === profileCount && entries.some((entry) => entry.status === 'unsure')) {
+    return ' unsure-day'
+  }
+  if (entries.length === profileCount) return ' everyone'
   return ' partial'
 }
 
@@ -38,9 +39,18 @@ function getDayDescription(entries: Availability[], profileCount: number): strin
   return `${entries.length} z ${profileCount} graczy zaznaczyło „Pasuje mi”`
 }
 
-export function CalendarView({ month, profiles, availability, currentUserId, onSelectDay }: CalendarViewProps) {
+export function CalendarView({
+  month,
+  profiles,
+  availability,
+  currentUserId,
+  protectedDays,
+  showProtectionMarks,
+  onSelectDay,
+}: CalendarViewProps) {
   const cells = useMemo(() => buildMonthGrid(month), [month])
   const today = toDateKey(new Date())
+  const protectedDaySet = useMemo(() => new Set(protectedDays), [protectedDays])
   const byDay = useMemo(() => {
     const map = new Map<string, Availability[]>()
     for (const entry of availability) {
@@ -65,14 +75,17 @@ export function CalendarView({ month, profiles, availability, currentUserId, onS
           const entries = (byDay.get(key) || []).filter((entry) => profileById.has(entry.user_id))
           const ownEntry = entries.find((entry) => entry.user_id === currentUserId)
           const statusClass = getDayClass(entries, profiles.length)
+          const visibleEntries = entries.slice(0, 5)
+          const hiddenCount = Math.max(0, entries.length - visibleEntries.length)
+          const protectedFromCleanup = protectedDaySet.has(key)
 
           return (
             <button
               type="button"
-              className={`calendar-day${statusClass}${ownEntry ? ' own' : ''}${key === today ? ' today' : ''}`}
+              className={`calendar-day${statusClass}${ownEntry ? ' own' : ''}${key === today ? ' today' : ''}${protectedFromCleanup ? ' cleanup-protected' : ''}`}
               key={key}
               onClick={() => onSelectDay(key)}
-              aria-label={`${key}: ${getDayDescription(entries, profiles.length)}`}
+              aria-label={`${key}: ${getDayDescription(entries, profiles.length)}${protectedFromCleanup ? ', chroniony przed automatycznym usunięciem' : ''}`}
             >
               <span className="day-number">{date.getDate()}</span>
               {ownEntry && (
@@ -82,25 +95,39 @@ export function CalendarView({ month, profiles, availability, currentUserId, onS
                   {ownEntry.status === 'unavailable' && <X size={14} />}
                 </span>
               )}
+              {showProtectionMarks && protectedFromCleanup && (
+                <span className="retention-mark" title="Termin nie zostanie usunięty automatycznie">
+                  <Pin size={13} />
+                </span>
+              )}
               <div className="day-summary">
                 <span className="person-count"><UsersRound size={14} /> {entries.length}/{profiles.length}</span>
                 <div className="mini-names">
-                  {entries.slice(0, 5).map((entry) => (
+                  <div className="mini-name-list">
+                    {visibleEntries.map((entry) => {
+                      const hasExtraInfo = Boolean(entry.note?.trim())
+
+                      return (
+                        <span
+                          className={`status-pill status-${entry.status}`}
+                          key={entry.user_id}
+                          title={hasExtraInfo ? 'Dodano godziny lub uwagę' : undefined}
+                        >
+                          {profileById.get(entry.user_id)?.display_name}
+                          {hasExtraInfo && <Mail className="note-indicator" size={11} aria-hidden="true" />}
+                        </span>
+                      )
+                    })}
+                  </div>
+                  {hiddenCount > 0 && (
                     <span
-                      className={`status-badge status-badge-${entry.status}`}
-                      key={entry.user_id}
-                      title={`${profileById.get(entry.user_id)?.display_name}{entry.note?.trim() ? " ✉" : ""}: ${
-                        entry.status === 'available'
-                          ? 'Pasuje mi'
-                          : entry.status === 'unsure'
-                            ? 'Jeszcze nie wiem'
-                            : 'Nie da rady'
-                      }`}
+                      className="more-people-count"
+                      title={`Pozostałych graczy: ${hiddenCount}`}
+                      aria-label={`Pozostałych graczy: ${hiddenCount}`}
                     >
-                      {profileById.get(entry.user_id)?.display_name}{entry.note?.trim() ? " ✉" : ""}
+                      +{hiddenCount}
                     </span>
-                  ))}
-                  {entries.length > 4 && <span className="status-badge status-badge-more">+{entries.length - 3}</span>}
+                  )}
                 </div>
               </div>
             </button>

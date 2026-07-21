@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Ban, Check, Copy, RefreshCw, ShieldCheck, Trash2, UserCheck, UserPlus, UsersRound, X } from 'lucide-react'
+import {
+  Accessibility,
+  Ban,
+  Check,
+  Copy,
+  MessagesSquare,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Trash2,
+  UserCheck,
+  UserPlus,
+  UsersRound,
+  X,
+} from 'lucide-react'
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
@@ -11,8 +25,11 @@ interface AdminUser {
   avatar_url: string | null
   is_active: boolean
   is_admin: boolean
-  created_at: string
+  colorblind_mode: boolean
   last_seen_at: string | null
+  device_type: 'computer' | 'phone' | 'tablet' | 'unknown'
+  operating_system: 'windows' | 'android' | 'apple' | 'linux' | 'unknown'
+  browser: 'firefox' | 'chrome' | 'edge' | 'safari' | 'opera' | 'brave' | 'unknown'
 }
 
 interface Invite {
@@ -29,10 +46,39 @@ interface AdminPanelProps {
 
 const ONLINE_WINDOW_MS = 90_000
 
+const DEVICE_LABELS: Record<AdminUser['device_type'], string> = {
+  computer: 'Komputer',
+  phone: 'Telefon',
+  tablet: 'Tablet',
+  unknown: 'Nieznane urządzenie',
+}
+
+const SYSTEM_LABELS: Record<AdminUser['operating_system'], string> = {
+  windows: 'Windows',
+  android: 'Android',
+  apple: 'Apple',
+  linux: 'Linux',
+  unknown: 'Nieznany system',
+}
+
+const BROWSER_LABELS: Record<AdminUser['browser'], string> = {
+  firefox: 'Firefox',
+  chrome: 'Chrome',
+  edge: 'Edge',
+  safari: 'Safari',
+  opera: 'Opera',
+  brave: 'Brave',
+  unknown: 'Nieznana przeglądarka',
+}
+
 function formatDate(value: string | null): string {
   if (!value) return 'Nigdy'
   return new Intl.DateTimeFormat('pl-PL', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(new Date(value))
 }
 
@@ -52,6 +98,32 @@ async function readFunctionError(error: unknown, fallback: string): Promise<stri
   return fallback
 }
 
+function DeviceInfoIcons({ user }: { user: AdminUser }) {
+  const deviceIcon = user.device_type === 'computer' ? 'computer' : user.device_type === 'unknown' ? 'unknown' : 'phone'
+  const systemIcon = user.operating_system
+  const browserIcon = user.browser
+
+  return (
+    <div className="admin-client-icons" aria-label="Ostatnio używane urządzenie, system i przeglądarka">
+      <img
+        src={`${import.meta.env.BASE_URL}icons/devices/${deviceIcon}.png`}
+        alt={DEVICE_LABELS[user.device_type]}
+        title={DEVICE_LABELS[user.device_type]}
+      />
+      <img
+        src={`${import.meta.env.BASE_URL}icons/systems/${systemIcon}.png`}
+        alt={SYSTEM_LABELS[user.operating_system]}
+        title={SYSTEM_LABELS[user.operating_system]}
+      />
+      <img
+        src={`${import.meta.env.BASE_URL}icons/browsers/${browserIcon}.png`}
+        alt={BROWSER_LABELS[user.browser]}
+        title={BROWSER_LABELS[user.browser]}
+      />
+    </div>
+  )
+}
+
 export function AdminPanel({ currentUserId, onClose, onUsersChanged }: AdminPanelProps) {
   const [users, setUsers] = useState<AdminUser[]>([])
   const [serverTime, setServerTime] = useState(() => Date.now())
@@ -60,6 +132,9 @@ export function AdminPanel({ currentUserId, onClose, onUsersChanged }: AdminPane
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [cleanupDays, setCleanupDays] = useState('180')
+  const [cleanupCount, setCleanupCount] = useState<number | null>(null)
+  const [cleanupBusy, setCleanupBusy] = useState(false)
 
   const invoke = useCallback(async (body: Record<string, unknown>) => {
     const { data, error } = await supabase.functions.invoke('admin-control', { body })
@@ -118,6 +193,49 @@ export function AdminPanel({ currentUserId, onClose, onUsersChanged }: AdminPane
     window.setTimeout(() => setCopied(false), 1500)
   }
 
+  const parseCleanupDays = (): number | null => {
+    const days = Number(cleanupDays)
+    return Number.isInteger(days) && days >= 1 && days <= 3650 ? days : null
+  }
+
+  const previewChatCleanup = async () => {
+    const days = parseCleanupDays()
+    if (!days) {
+      setMessage('Podaj pełną liczbę dni od 1 do 3650.')
+      return
+    }
+
+    setCleanupBusy(true)
+    setMessage(null)
+    try {
+      const data = await invoke({ action: 'chat-cleanup-preview', days })
+      setCleanupCount(Number(data.count || 0))
+    } catch (error) {
+      setMessage(await readFunctionError(error, 'Nie udało się sprawdzić historii czatu.'))
+    } finally {
+      setCleanupBusy(false)
+    }
+  }
+
+  const deleteChatHistory = async () => {
+    const days = parseCleanupDays()
+    if (!days || cleanupCount === null || cleanupCount <= 0) return
+    if (!window.confirm(`Trwale usunąć ${cleanupCount} wiadomości starszych niż ${days} dni? Tej operacji nie można cofnąć.`)) return
+
+    setCleanupBusy(true)
+    setMessage(null)
+    try {
+      const data = await invoke({ action: 'chat-cleanup', days })
+      const deleted = Number(data.deleted || 0)
+      setCleanupCount(0)
+      setMessage(`Usunięto ${deleted} wiadomości z historii czatu.`)
+    } catch (error) {
+      setMessage(await readFunctionError(error, 'Nie udało się usunąć historii czatu.'))
+    } finally {
+      setCleanupBusy(false)
+    }
+  }
+
   const setActive = async (user: AdminUser, active: boolean) => {
     const verb = active ? 'odblokować' : 'zablokować'
     if (!window.confirm(`Czy na pewno chcesz ${verb} konto „${user.display_name}”?`)) return
@@ -129,6 +247,22 @@ export function AdminPanel({ currentUserId, onClose, onUsersChanged }: AdminPane
       setMessage(active ? 'Konto zostało odblokowane.' : 'Konto zostało zablokowane.')
     } catch (error) {
       setMessage(await readFunctionError(error, 'Nie udało się zmienić stanu konta.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const setColorblind = async (user: AdminUser, enabled: boolean) => {
+    setBusy(true)
+    setMessage(null)
+    try {
+      await invoke({ action: 'set-colorblind', userId: user.id, enabled })
+      await Promise.all([loadUsers(true), onUsersChanged()])
+      setMessage(enabled
+        ? `Tryb daltonisty został włączony dla „${user.display_name}”.`
+        : `Tryb daltonisty został wyłączony dla „${user.display_name}”.`)
+    } catch (error) {
+      setMessage(await readFunctionError(error, 'Nie udało się zmienić trybu daltonisty.'))
     } finally {
       setBusy(false)
     }
@@ -188,6 +322,45 @@ export function AdminPanel({ currentUserId, onClose, onUsersChanged }: AdminPane
           </div>
         )}
 
+        <section className="admin-cleanup-section">
+          <div>
+            <h3><MessagesSquare size={18} /> Historia czatu</h3>
+            <p>Wiadomości nie są usuwane automatycznie. Sam wybierasz ich wiek.</p>
+          </div>
+          <div className="admin-cleanup-controls">
+            <label>
+              <span>Usuń wiadomości starsze niż</span>
+              <span className="admin-days-input">
+                <input
+                  type="number"
+                  min={1}
+                  max={3650}
+                  step={1}
+                  value={cleanupDays}
+                  onChange={(event) => {
+                    setCleanupDays(event.target.value)
+                    setCleanupCount(null)
+                  }}
+                />
+                <span>dni</span>
+              </span>
+            </label>
+            <button className="secondary-button" type="button" disabled={cleanupBusy} onClick={() => void previewChatCleanup()}>
+              <Search size={17} /> Sprawdź
+            </button>
+          </div>
+          {cleanupCount !== null && (
+            <div className="admin-cleanup-result">
+              <span>Znaleziono: <b>{cleanupCount}</b></span>
+              {cleanupCount > 0 && (
+                <button className="danger-button compact" type="button" disabled={cleanupBusy} onClick={() => void deleteChatHistory()}>
+                  <Trash2 size={16} /> Usuń wiadomości
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+
         <div className="admin-list-heading">
           <h3><UsersRound size={18} /> Użytkownicy</h3>
           <button className="secondary-button compact" type="button" disabled={loading || busy} onClick={() => void loadUsers()}>
@@ -215,15 +388,24 @@ export function AdminPanel({ currentUserId, onClose, onUsersChanged }: AdminPane
                       <span className={user.is_active ? 'account-active-badge' : 'account-blocked-badge'}>
                         {user.is_active ? 'Aktywne' : 'Zablokowane'}
                       </span>
+                      {user.colorblind_mode && <span className="colorblind-badge">Tryb daltonisty</span>}
                     </div>
                     <code>{user.player_code}</code>
                     <dl className="admin-user-meta">
                       <div><dt>Online teraz</dt><dd>{online ? 'Tak' : 'Nie'}</dd></div>
                       <div><dt>Ostatnio online</dt><dd>{formatDate(user.last_seen_at)}</dd></div>
-                      <div><dt>Data dołączenia</dt><dd>{formatDate(user.created_at)}</dd></div>
                     </dl>
+                    <DeviceInfoIcons user={user} />
                   </div>
                   <div className="admin-user-actions">
+                    <button
+                      className={`accessibility-button compact${user.colorblind_mode ? ' enabled' : ''}`}
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void setColorblind(user, !user.colorblind_mode)}
+                    >
+                      <Accessibility size={16} /> {user.colorblind_mode ? 'Daltonista: włączony' : 'Daltonista: wyłączony'}
+                    </button>
                     {user.is_active ? (
                       <button className="warning-button compact" type="button" disabled={busy || own || user.is_admin} onClick={() => void setActive(user, false)}>
                         <Ban size={16} /> Zablokuj

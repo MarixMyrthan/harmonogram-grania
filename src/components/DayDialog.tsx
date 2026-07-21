@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { Check, CircleHelp, Clock3, MessageSquareText, Trash2, X } from 'lucide-react'
+import { Check, CircleHelp, Clock3, MessageSquareText, Pin, PinOff, Trash2, X } from 'lucide-react'
 import { Avatar } from './Avatar'
 import type { Availability, AvailabilityStatus, Profile } from '../types'
 import { longDateLabel } from '../lib/date'
@@ -10,8 +10,12 @@ interface DayDialogProps {
   availability: Availability[]
   currentUserId: string
   busy: boolean
+  isAdmin: boolean
+  protectedFromCleanup: boolean
+  protectionBusy: boolean
   onClose: () => void
   onSave: (status: AvailabilityStatus | null, note: string) => Promise<void>
+  onToggleProtection: (protectedFromCleanup: boolean) => void
 }
 
 const statusLabels: Record<AvailabilityStatus, string> = {
@@ -26,8 +30,12 @@ export function DayDialog({
   availability,
   currentUserId,
   busy,
+  isAdmin,
+  protectedFromCleanup,
+  protectionBusy,
   onClose,
   onSave,
+  onToggleProtection,
 }: DayDialogProps) {
   const ownEntry = availability.find((entry) => entry.user_id === currentUserId)
   const [status, setStatus] = useState<AvailabilityStatus | null>(ownEntry?.status || null)
@@ -89,6 +97,22 @@ export function DayDialog({
           <p className="missing-people">
             Nie odpowiedzieli: {missingPeople.map((profile) => profile.display_name).join(', ')}
           </p>
+        )}
+
+        {isAdmin && (
+          <button
+            className={`day-retention-toggle${protectedFromCleanup ? ' enabled' : ''}`}
+            type="button"
+            disabled={protectionBusy}
+            onClick={() => onToggleProtection(!protectedFromCleanup)}
+            aria-pressed={protectedFromCleanup}
+          >
+            {protectedFromCleanup ? <Pin size={18} /> : <PinOff size={18} />}
+            <span>
+              <strong>{protectedFromCleanup ? 'Nie usuwaj automatycznie tego dnia' : 'Automatyczne usuwanie jest włączone'}</strong>
+              <small>Odpowiedzi są normalnie usuwane 7 dni po terminie.</small>
+            </span>
+          </button>
         )}
 
         <form className="own-availability" onSubmit={submit}>
