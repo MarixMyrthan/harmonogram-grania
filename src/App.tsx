@@ -101,6 +101,7 @@ export default function App() {
   const jackpotAudioRef = useRef<HTMLAudioElement | null>(null)
   const marioAudioRef = useRef<HTMLAudioElement | null>(null)
   const gokuAudioRef = useRef<HTMLAudioElement | null>(null)
+  const rzydAudioRef = useRef<HTMLAudioElement | null>(null)
   const noticeTimerRef = useRef<number | null>(null)
   const playedEventsRef = useRef(new Set<string>())
 
@@ -145,6 +146,19 @@ export default function App() {
     })
   }, [])
 
+  const triggerAudioSecret = useCallback(() => {
+    const audio = rzydAudioRef.current
+    if (!audio) return
+
+    audio.pause()
+    audio.currentTime = 0
+    audio.loop = false
+
+    void audio.play().catch((error) => {
+      console.error('Nie udało się odtworzyć rzyd.mp3:', error)
+    })
+  }, [])
+
   useEffect(() => {
     if (!secretImageActive) return
 
@@ -186,8 +200,9 @@ export default function App() {
     jackpotAudioRef.current = new Audio(`${base}audio/JACKPOT.mp3`)
     marioAudioRef.current = new Audio(`${base}audio/Mario.mp3`)
     gokuAudioRef.current = new Audio(`${import.meta.env.BASE_URL}audio/SonGoku.mp3`)
+    rzydAudioRef.current = new Audio(`${base}audio/rzyd.mp3`)
 
-    for (const audio of [jackpotAudioRef.current, marioAudioRef.current, gokuAudioRef.current]) {
+    for (const audio of [jackpotAudioRef.current, marioAudioRef.current, gokuAudioRef.current, rzydAudioRef.current]) {
       audio.preload = 'auto'
       audio.loop = false
     }
@@ -196,7 +211,7 @@ export default function App() {
       window.removeEventListener('pointerdown', unlock, true)
       window.removeEventListener('keydown', unlock, true)
 
-      const attempts = [jackpotAudioRef.current, marioAudioRef.current, gokuAudioRef.current]
+      const attempts = [jackpotAudioRef.current, marioAudioRef.current, gokuAudioRef.current, rzydAudioRef.current]
         .filter((audio): audio is HTMLAudioElement => Boolean(audio))
         .map(async (audio) => {
           const previousVolume = audio.volume
@@ -225,6 +240,7 @@ export default function App() {
       jackpotAudioRef.current?.pause()
       marioAudioRef.current?.pause()
       gokuAudioRef.current?.pause()
+      rzydAudioRef.current?.pause()
     }
   }, [])
 
@@ -311,6 +327,47 @@ export default function App() {
       window.removeEventListener('keydown', handlePraiseKeys)
     }
   }, [triggerSecretPhrase])
+
+
+  useEffect(() => {
+    const audioPhrase = 'żyd'
+    let position = 0
+
+    const handleAudioSecretKeys = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+
+      if (
+        target?.matches(
+          'input, textarea, select, [contenteditable="true"]',
+        )
+      ) {
+        return
+      }
+
+      if (event.key.length !== 1) return
+
+      const key = event.key.toLocaleLowerCase('pl-PL')
+
+      if (key === audioPhrase[position]) {
+        position += 1
+
+        if (position === audioPhrase.length) {
+          position = 0
+          triggerAudioSecret()
+        }
+
+        return
+      }
+
+      position = key === audioPhrase[0] ? 1 : 0
+    }
+
+    window.addEventListener('keydown', handleAudioSecretKeys)
+
+    return () => {
+      window.removeEventListener('keydown', handleAudioSecretKeys)
+    }
+  }, [triggerAudioSecret])
 
   const loadProfiles = useCallback(async () => {
     if (!session) return
@@ -730,6 +787,7 @@ export default function App() {
         <SecretPanel
           onClose={() => setSecretPanelOpen(false)}
           onSecretPhrase={triggerSecretPhrase}
+          onAudioSecret={triggerAudioSecret}
           onKonami={() => void playTrack('mario')}
         />
       )}

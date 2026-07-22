@@ -4,6 +4,7 @@ import { LockKeyhole, X } from 'lucide-react'
 interface SecretPanelProps {
   onClose: () => void
   onSecretPhrase: () => void
+  onAudioSecret: () => void
   onKonami: () => void
 }
 
@@ -23,7 +24,7 @@ const KEY_LABELS: Record<ControllerKey, string> = {
   start: 'Start',
 }
 
-export function SecretPanel({ onClose, onSecretPhrase, onKonami }: SecretPanelProps) {
+export function SecretPanel({ onClose, onSecretPhrase, onAudioSecret, onKonami }: SecretPanelProps) {
   const [phrase, setPhrase] = useState('')
   const [phraseError, setPhraseError] = useState(false)
   const [controllerError, setControllerError] = useState(false)
@@ -55,6 +56,12 @@ export function SecretPanel({ onClose, onSecretPhrase, onKonami }: SecretPanelPr
 
   const submitPhrase = (event: FormEvent) => {
     event.preventDefault()
+
+    if (phrase.trim() === 'żyd') {
+      onClose()
+      onAudioSecret()
+      return
+    }
 
     if (phrase === 'Ultra instynkt') {
       onClose()
